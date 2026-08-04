@@ -22,7 +22,8 @@ const sourceType = process.env.SOURCE_TYPE || config.source_type || 'user';
 const target = process.env.TARGET || config.target || '';
 const maxResults = parseInt(process.env.MAX_RESULTS || config.max_results, 10) || 10;
 const mediaOnly = (process.env.MEDIA_ONLY === 'true') || (config.media_only === true);
-const filterReplies = (process.env.FILTER_REPLIES === 'true') || (config.filter_replies === true);
+const filterReplies = process.env.FILTER_REPLIES || config.filter_replies || 'all';
+console.log(`[CONFIG] filter_replies=${filterReplies}`);
 const keyHash = process.env.KEY_HASH || config.key_hash || '';
 const startDate = process.env.START_DATE || config.start_date || '';
 const endDate = process.env.END_DATE || config.end_date || '';
@@ -281,8 +282,23 @@ function extractDateFromText(text) {
           } catch(e2) {}
         }
 
-        const isReply = /^Replying\s+to/i.test(text) || text.includes('Replying to');
-        if (filterReplies && isReply) continue;
+        let isReply = /^Replying\s+to/i.test(text) || text.includes('Replying to');
+        if (!isReply) {
+          try {
+            const replyIndicator = await tweet.locator('[data-testid="socialContext"]').innerText({ timeout: 500 });
+            if (/reply/i.test(replyIndicator)) isReply = true;
+          } catch(e) {}
+        }
+        if (!isReply) {
+          try {
+            const socialCtx = await tweet.locator('a[href*="/status/"]').first().getAttribute('href', { timeout: 500 });
+            const parentLink = await tweet.locator('a[href*="in_reply_to"]').count({ timeout: 500 });
+            if (parentLink > 0) isReply = true;
+          } catch(e) {}
+        }
+        console.log(`  Post ${posts.length + 1}: isReply=${isReply}, filterReplies=${filterReplies}`);
+        if (filterReplies === 'posts' && isReply) continue;
+        if (filterReplies === 'replies' && !isReply) continue;
 
         let viewCount = 0;
         try {
@@ -342,7 +358,7 @@ function extractDateFromText(text) {
       consecutiveEmptyScrolls = 0;
     }
     if (posts.length >= maxResults) break;
-    await page.evaluate(() => window.scrollBy(0, 1200));
+    await page.evaluate(() => window.scrollBy(0, 2000));
     await page.waitForTimeout(3000);
     scrollAttempts++;
   }

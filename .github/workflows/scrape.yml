@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       source_type:
-        description: 'Source type (user/hashtag/cashtag/keyword/url)'
+        description: 'Source type (user/hashtag/keyword/url)'
         required: false
         default: ''
         type: string
@@ -36,9 +36,9 @@ on:
         default: ''
         type: string
       filter_replies:
-        description: 'Filter out replies (true/false)'
+        description: 'Filter replies (all/posts/replies)'
         required: false
-        default: 'false'
+        default: 'all'
         type: string
   repository_dispatch:
     types: [trigger-scrape]
@@ -78,116 +78,63 @@ jobs:
         if: steps.cache-playwright.outputs.cache-hit != 'true'
         run: npx playwright install chromium --with-deps
 
-      - name: Read inputs safely
-        id: inputs
-        env:
-          IN_SOURCE_TYPE: ${{ github.event.inputs.source_type }}
-          IN_TARGET: ${{ github.event.inputs.target }}
-          IN_MAX_RESULTS: ${{ github.event.inputs.max_results }}
-          IN_MEDIA_ONLY: ${{ github.event.inputs.media_only }}
-          IN_START_DATE: ${{ github.event.inputs.start_date }}
-          IN_END_DATE: ${{ github.event.inputs.end_date }}
-          IN_FILTER_REPLIES: ${{ github.event.inputs.filter_replies }}
-          IN_SUPABASE_URL: ${{ github.event.inputs.supabase_url }}
-          IN_SUPABASE_KEY: ${{ github.event.inputs.supabase_key }}
-          IN_KEY_HASH: ${{ github.event.inputs.key_hash }}
-          RD_PAYLOAD: ${{ github.event.client_payload }}
-          RD_SOURCE_TYPE: ${{ github.event.client_payload.source_type }}
-          RD_TARGET: ${{ github.event.client_payload.target }}
-          RD_MAX_RESULTS: ${{ github.event.client_payload.max_results }}
-          RD_MEDIA_ONLY: ${{ github.event.client_payload.media_only }}
-          RD_START_DATE: ${{ github.event.client_payload.start_date }}
-          RD_END_DATE: ${{ github.event.client_payload.end_date }}
-          RD_FILTER_REPLIES: ${{ github.event.client_payload.filter_replies }}
-          RD_SUPABASE_URL: ${{ github.event.client_payload.supabase_url }}
-          RD_SUPABASE_KEY: ${{ github.event.client_payload.supabase_key }}
-          RD_KEY_HASH: ${{ github.event.client_payload.key_hash }}
-        run: |
-          echo "event=${{ github.event_name }}" >> $GITHUB_OUTPUT
-          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            echo "source_type=$RD_SOURCE_TYPE" >> $GITHUB_OUTPUT
-            echo "target=$RD_TARGET" >> $GITHUB_OUTPUT
-            echo "max_results=$RD_MAX_RESULTS" >> $GITHUB_OUTPUT
-            echo "media_only=$RD_MEDIA_ONLY" >> $GITHUB_OUTPUT
-            echo "start_date=$RD_START_DATE" >> $GITHUB_OUTPUT
-            echo "end_date=$RD_END_DATE" >> $GITHUB_OUTPUT
-            echo "filter_replies=$RD_FILTER_REPLIES" >> $GITHUB_OUTPUT
-            echo "supabase_url=$RD_SUPABASE_URL" >> $GITHUB_OUTPUT
-            echo "supabase_key=$RD_SUPABASE_KEY" >> $GITHUB_OUTPUT
-            echo "key_hash=$RD_KEY_HASH" >> $GITHUB_OUTPUT
-          elif [ -n "$IN_SOURCE_TYPE" ]; then
-            echo "source_type=$IN_SOURCE_TYPE" >> $GITHUB_OUTPUT
-            echo "target=$IN_TARGET" >> $GITHUB_OUTPUT
-            echo "max_results=$IN_MAX_RESULTS" >> $GITHUB_OUTPUT
-            echo "media_only=$IN_MEDIA_ONLY" >> $GITHUB_OUTPUT
-            echo "start_date=$IN_START_DATE" >> $GITHUB_OUTPUT
-            echo "end_date=$IN_END_DATE" >> $GITHUB_OUTPUT
-            echo "filter_replies=$IN_FILTER_REPLIES" >> $GITHUB_OUTPUT
-            echo "supabase_url=$IN_SUPABASE_URL" >> $GITHUB_OUTPUT
-            echo "supabase_key=$IN_SUPABASE_KEY" >> $GITHUB_OUTPUT
-            echo "key_hash=$IN_KEY_HASH" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build config
+      - name: Build config JSON
         id: config
-        env:
-          IN_SOURCE_TYPE: ${{ steps.inputs.outputs.source_type }}
-          IN_TARGET: ${{ steps.inputs.outputs.target }}
-          IN_MAX_RESULTS: ${{ steps.inputs.outputs.max_results }}
-          IN_MEDIA_ONLY: ${{ steps.inputs.outputs.media_only }}
-          IN_START_DATE: ${{ steps.inputs.outputs.start_date }}
-          IN_END_DATE: ${{ steps.inputs.outputs.end_date }}
-          IN_FILTER_REPLIES: ${{ steps.inputs.outputs.filter_replies }}
-          IN_SUPABASE_URL: ${{ steps.inputs.outputs.supabase_url }}
-          IN_SUPABASE_KEY: ${{ steps.inputs.outputs.supabase_key }}
-          IN_KEY_HASH: ${{ steps.inputs.outputs.key_hash }}
         run: |
           echo "Event: ${{ github.event_name }}"
-          SOURCE_TYPE="$IN_SOURCE_TYPE"
-          TARGET="$IN_TARGET"
-          MAX_RESULTS="$IN_MAX_RESULTS"
-          MEDIA_ONLY="$IN_MEDIA_ONLY"
-          START_DATE="$IN_START_DATE"
-          END_DATE="$IN_END_DATE"
-          FILTER_REPLIES="$IN_FILTER_REPLIES"
-          if [ -z "$SOURCE_TYPE" ]; then SOURCE_TYPE="user"; fi
-          if [ -z "$MAX_RESULTS" ]; then MAX_RESULTS="10"; fi
-          if [ -z "$MEDIA_ONLY" ]; then MEDIA_ONLY="false"; fi
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "Using repository_dispatch client_payload"
+            SOURCE_TYPE=$(echo '${{ github.event.client_payload }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('source_type','user'))" 2>/dev/null || echo "user")
+            TARGET=$(echo '${{ github.event.client_payload }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('target',''))" 2>/dev/null || echo "")
+            MAX_RESULTS=$(echo '${{ github.event.client_payload }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('max_results','10'))" 2>/dev/null || echo "10")
+            MEDIA_ONLY=$(echo '${{ github.event.client_payload }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('media_only','false'))" 2>/dev/null || echo "false")
+            START_DATE=$(echo '${{ github.event.client_payload }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('start_date',''))" 2>/dev/null || echo "")
+            END_DATE=$(echo '${{ github.event.client_payload }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('end_date',''))" 2>/dev/null || echo "")
+            FILTER_REPLIES=$(echo '${{ github.event.client_payload }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('filter_replies','all'))" 2>/dev/null || echo "all")
+          elif [ -n "${{ github.event.inputs.source_type }}" ]; then
+            echo "Using workflow_dispatch inputs"
+            SOURCE_TYPE="${{ github.event.inputs.source_type }}"
+            TARGET="${{ github.event.inputs.target }}"
+            MAX_RESULTS="${{ github.event.inputs.max_results }}"
+            MEDIA_ONLY="${{ github.event.inputs.media_only }}"
+            START_DATE="${{ github.event.inputs.start_date }}"
+            END_DATE="${{ github.event.inputs.end_date }}"
+            FILTER_REPLIES="${{ github.event.inputs.filter_replies }}"
+          else
+            echo "Using CONFIG_JSON secret fallback"
+            SOURCE_TYPE=$(echo '${{ secrets.CONFIG_JSON }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('source_type','user'))" 2>/dev/null || echo "user")
+            TARGET=$(echo '${{ secrets.CONFIG_JSON }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('target',''))" 2>/dev/null || echo "")
+            MAX_RESULTS=$(echo '${{ secrets.CONFIG_JSON }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('max_results','10'))" 2>/dev/null || echo "10")
+            MEDIA_ONLY=$(echo '${{ secrets.CONFIG_JSON }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('media_only','false'))" 2>/dev/null || echo "false")
+            START_DATE=$(echo '${{ secrets.CONFIG_JSON }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('start_date',''))" 2>/dev/null || echo "")
+            END_DATE=$(echo '${{ secrets.CONFIG_JSON }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('end_date',''))" 2>/dev/null || echo "")
+            FILTER_REPLIES=$(echo '${{ secrets.CONFIG_JSON }}' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('filter_replies','all'))" 2>/dev/null || echo "all")
+          fi
           if [ "$MEDIA_ONLY" = "true" ]; then MEDIA_BOOL="true"; else MEDIA_BOOL="false"; fi
-          if [ "$FILTER_REPLIES" = "true" ]; then FILTER_REPLIES_BOOL="true"; else FILTER_REPLIES_BOOL="false"; fi
-          KH="$IN_KEY_HASH"
-          CONFIG="{\"source_type\":\"${SOURCE_TYPE}\",\"target\":\"${TARGET}\",\"max_results\":\"${MAX_RESULTS}\",\"media_only\":${MEDIA_BOOL},\"filter_replies\":${FILTER_REPLIES_BOOL},\"key_hash\":\"${KH}\",\"start_date\":\"${START_DATE}\",\"end_date\":\"${END_DATE}\"}"
-          echo "=== RESOLVED CONFIG ==="
-          echo "source_type=$SOURCE_TYPE"
-          echo "target=$TARGET"
-          echo "max_results=$MAX_RESULTS"
-          echo "media_only=$MEDIA_ONLY"
-          echo "filter_replies=$FILTER_REPLIES"
-          echo "config=$CONFIG"
+          KH="${{ secrets.KEY_HASH }}"
+          CONFIG="{\"source_type\":\"${SOURCE_TYPE}\",\"target\":\"${TARGET}\",\"max_results\":\"${MAX_RESULTS}\",\"media_only\":${MEDIA_BOOL},\"key_hash\":\"${KH}\",\"start_date\":\"${START_DATE}\",\"end_date\":\"${END_DATE}\",\"filter_replies\":\"${FILTER_REPLIES}\"}"
+          echo "Config: $CONFIG"
           echo "config=$CONFIG" >> $GITHUB_OUTPUT
           echo "source_type=$SOURCE_TYPE" >> $GITHUB_OUTPUT
           echo "target=$TARGET" >> $GITHUB_OUTPUT
           echo "max_results=$MAX_RESULTS" >> $GITHUB_OUTPUT
           echo "media_only=$MEDIA_ONLY" >> $GITHUB_OUTPUT
-          echo "filter_replies=$FILTER_REPLIES" >> $GITHUB_OUTPUT
           echo "start_date=$START_DATE" >> $GITHUB_OUTPUT
           echo "end_date=$END_DATE" >> $GITHUB_OUTPUT
-          echo "supabase_url=$IN_SUPABASE_URL" >> $GITHUB_OUTPUT
-          echo "supabase_key=$IN_SUPABASE_KEY" >> $GITHUB_OUTPUT
-          echo "key_hash=$KH" >> $GITHUB_OUTPUT
+          echo "filter_replies=$FILTER_REPLIES" >> $GITHUB_OUTPUT
 
       - name: Run scraper
         env:
-          SUPABASE_URL: ${{ steps.config.outputs.supabase_url || secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ steps.config.outputs.supabase_key || secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           X_STATE: ${{ secrets.X_STATE }}
           CONFIG_JSON: ${{ steps.config.outputs.config }}
-          KEY_HASH: ${{ steps.config.outputs.key_hash || secrets.KEY_HASH }}
+          KEY_HASH: ${{ secrets.KEY_HASH }}
           SOURCE_TYPE: ${{ steps.config.outputs.source_type }}
           TARGET: ${{ steps.config.outputs.target }}
           MAX_RESULTS: ${{ steps.config.outputs.max_results }}
           MEDIA_ONLY: ${{ steps.config.outputs.media_only }}
-          FILTER_REPLIES: ${{ steps.config.outputs.filter_replies }}
           START_DATE: ${{ steps.config.outputs.start_date }}
           END_DATE: ${{ steps.config.outputs.end_date }}
+          FILTER_REPLIES: ${{ steps.config.outputs.filter_replies }}
         run: node scraper.js
