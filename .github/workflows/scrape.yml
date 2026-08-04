@@ -2,72 +2,150 @@ name: Guildera Scraper
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    -  cron: '0 */6 * * *'
   workflow_dispatch:
-    inputs:
+     inputs:
       source_type:
-        description: 'Source type (user/hashtag/keyword/url)'
-        required: false
+        descripti on: 'Source type (user/hashtag/keyword/url)'
+         required: false
         default: ''
-        type: string
+         type: string
       target:
-        description: 'Search target'
-        required: false
+        des cription: 'Search target'
+        required: f alse
         default: ''
-        type: string
+        type: string 
       max_results:
-        description: 'Max results'
+        description: 'Max  results'
         required: false
-        default: ''
+        def ault: ''
         type: string
-      media_only:
-        description: 'Media only (true/false)'
+      media_onl y:
+        description: 'Media only (true/fal se)'
         required: false
-        default: ''
+        default:  ''
         type: string
       start_date:
-        description: 'Start date (YYYY-MM-DD)'
-        required: false
+         description: 'Start date (YYYY-MM-DD)'
+         required: false
         default: ''
-        type: string
+         type: string
       end_date:
-        description: 'End date (YYYY-MM-DD)'
-        required: false
+        d escription: 'End date (YYYY-MM-DD)'
+        r equired: false
         default: ''
-        type: string
+        ty pe: string
       filter_replies:
-        description: 'Filter replies (all/posts/replies)'
+        desc ription: 'Filter replies (all/posts/replies)' 
         required: false
-        default: 'all'
+        default: 'al l'
         type: string
-  repository_dispatch:
+  repository_dispatch :
     types: [trigger-scrape]
 
 jobs:
-  scrape:
+  scrape :
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/lynxified/guildera-scraper-template:latest
+       image: ghcr.io/lynxified/guildera-scrape r-template:latest
       credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    timeout-minutes: 8
+         username: ${{ github.actor }}
+        passwor d: ${{ secrets.GITHUB_TOKEN }}
+    timeout-mi nutes: 8
 
     steps:
-      - name: Run scraper
-        working-directory: /app
+      - name: Read input s safely
+        id: inputs
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          X_STATE: ${{ secrets.X_STATE }}
-          SOURCE_TYPE: ${{ github.event.inputs.source_type || github.event.client_payload.source_type || '' }}
-          TARGET: ${{ github.event.inputs.target || github.event.client_payload.target || '' }}
-          MAX_RESULTS: ${{ github.event.inputs.max_results || github.event.client_payload.max_results || '' }}
-          MEDIA_ONLY: ${{ github.event.inputs.media_only || github.event.client_payload.media_only || '' }}
-          START_DATE: ${{ github.event.inputs.start_date || github.event.client_payload.start_date || '' }}
-          END_DATE: ${{ github.event.inputs.end_date || github.event.client_payload.end_date || '' }}
-          FILTER_REPLIES: ${{ github.event.inputs.filter_replies || github.event.client_payload.filter_replies || 'all' }}
-          KEY_HASH: ${{ secrets.KEY_HASH }}
+           IN_SOURCE_TYPE: ${{ github.event.inputs .source_type }}
+          IN_TARGET: ${{ gith ub.event.inputs.target }}
+          IN_MAX_RE SULTS: ${{ github.event.inputs.max_results }} 
+          IN_MEDIA_ONLY: ${{ github.event.in puts.media_only }}
+          IN_START_DATE: $ {{ github.event.inputs.start_date }}
+           IN_END_DATE: ${{ github.event.inputs.end_da te }}
+          IN_FILTER_REPLIES: ${{ github .event.inputs.filter_replies }}
+          RD_ SOURCE_TYPE: ${{ github.event.client_payload. source_type }}
+          RD_TARGET: ${{ githu b.event.client_payload.target }}
+          RD _MAX_RESULTS: ${{ github.event.client_payload .max_results }}
+          RD_MEDIA_ONLY: ${{  github.event.client_payload.media_only }}
+           RD_START_DATE: ${{ github.event.client _payload.start_date }}
+          RD_END_DATE:  ${{ github.event.client_payload.end_date }}
+           RD_FILTER_REPLIES: ${{ github.event .client_payload.filter_replies }}
+        run : |
+          echo "event=${{ github.event_na me }}" >> $GITHUB_OUTPUT
+          if [ "${{  github.event_name }}" = "repository_dispatch"  ]; then
+            echo "source_type=$RD_SO URCE_TYPE" >> $GITHUB_OUTPUT
+            echo  "target=$RD_TARGET" >> $GITHUB_OUTPUT
+             echo "max_results=$RD_MAX_RESULTS" >> $ GITHUB_OUTPUT
+            echo "media_only=$R D_MEDIA_ONLY" >> $GITHUB_OUTPUT
+            e cho "start_date=$RD_START_DATE" >> $GITHUB_OU TPUT
+            echo "end_date=$RD_END_DATE"  >> $GITHUB_OUTPUT
+            echo "filter_r eplies=$RD_FILTER_REPLIES" >> $GITHUB_OUTPUT
+           elif [ -n "$IN_SOURCE_TYPE" ]; then 
+            echo "source_type=$IN_SOURCE_TYP E" >> $GITHUB_OUTPUT
+            echo "target =$IN_TARGET" >> $GITHUB_OUTPUT
+            ec ho "max_results=$IN_MAX_RESULTS" >> $GITHUB_O UTPUT
+            echo "media_only=$IN_MEDIA_ ONLY" >> $GITHUB_OUTPUT
+            echo "sta rt_date=$IN_START_DATE" >> $GITHUB_OUTPUT
+             echo "end_date=$IN_END_DATE" >> $GIT HUB_OUTPUT
+            echo "filter_replies=$ IN_FILTER_REPLIES" >> $GITHUB_OUTPUT
+           else
+            echo "source_type=" >> $GI THUB_OUTPUT
+            echo "target=" >> $GI THUB_OUTPUT
+            echo "max_results=" > > $GITHUB_OUTPUT
+            echo "media_only =" >> $GITHUB_OUTPUT
+            echo "start_ date=" >> $GITHUB_OUTPUT
+            echo "en d_date=" >> $GITHUB_OUTPUT
+            echo " filter_replies=" >> $GITHUB_OUTPUT
+           fi
+
+      - name: Build config JSON
+        i d: config
+        env:
+          IN_SOURCE_TY PE: ${{ steps.inputs.outputs.source_type }}
+           IN_TARGET: ${{ steps.inputs.outputs. target }}
+          IN_MAX_RESULTS: ${{ steps .inputs.outputs.max_results }}
+          IN_M EDIA_ONLY: ${{ steps.inputs.outputs.media_onl y }}
+          IN_START_DATE: ${{ steps.input s.outputs.start_date }}
+          IN_END_DATE : ${{ steps.inputs.outputs.end_date }}
+           IN_FILTER_REPLIES: ${{ steps.inputs.outpu ts.filter_replies }}
         run: |
-          echo "[DEBUG] SOURCE_TYPE=$SOURCE_TYPE TARGET=$TARGET MAX_RESULTS=$MAX_RESULTS FILTER_REPLIES=$FILTER_REPLIES MEDIA_ONLY=$MEDIA_ONLY"
-          node scraper.js
+           SOURCE_TYPE="$IN_SOURCE_TYPE"
+          TARG ET="$IN_TARGET"
+          MAX_RESULTS="$IN_MA X_RESULTS"
+          MEDIA_ONLY="$IN_MEDIA_ON LY"
+          START_DATE="$IN_START_DATE"
+           END_DATE="$IN_END_DATE"
+          FILT ER_REPLIES="$IN_FILTER_REPLIES"
+          [ - z "$SOURCE_TYPE" ] && SOURCE_TYPE="user"
+           [ -z "$MAX_RESULTS" ] && MAX_RESULTS="1 0"
+          [ -z "$FILTER_REPLIES" ] && FILT ER_REPLIES="all"
+          if [ "$MEDIA_ONLY"  = "true" ]; then MEDIA_BOOL="true"; else MED IA_BOOL="false"; fi
+          KH="${{ secrets .KEY_HASH }}"
+          CONFIG="{\"source_typ e\":\"${SOURCE_TYPE}\",\"target\":\"${TARGET} \",\"max_results\":\"${MAX_RESULTS}\",\"media _only\":${MEDIA_BOOL},\"key_hash\":\"${KH}\", \"start_date\":\"${START_DATE}\",\"end_date\" :\"${END_DATE}\",\"filter_replies\":\"${FILTE R_REPLIES}\"}"
+          echo "Config: $CONFI G"
+          echo "config=$CONFIG" >> $GITHUB _OUTPUT
+          echo "source_type=$SOURCE_T YPE" >> $GITHUB_OUTPUT
+          echo "target =$TARGET" >> $GITHUB_OUTPUT
+          echo "m ax_results=$MAX_RESULTS" >> $GITHUB_OUTPUT
+           echo "media_only=$MEDIA_ONLY" >> $GIT HUB_OUTPUT
+          echo "start_date=$START_ DATE" >> $GITHUB_OUTPUT
+          echo "end_d ate=$END_DATE" >> $GITHUB_OUTPUT
+          ec ho "filter_replies=$FILTER_REPLIES" >> $GITHU B_OUTPUT
+
+      - name: Run scraper
+        e nv:
+          SUPABASE_URL: ${{ secrets.SUPAB ASE_URL }}
+          SUPABASE_SERVICE_KEY: ${ { secrets.SUPABASE_SERVICE_KEY }}
+          X _STATE: ${{ secrets.X_STATE }}
+          CONF IG_JSON: ${{ steps.config.outputs.config }}
+           KEY_HASH: ${{ secrets.KEY_HASH }}
+           SOURCE_TYPE: ${{ steps.config.outputs .source_type }}
+          TARGET: ${{ steps.c onfig.outputs.target }}
+          MAX_RESULTS : ${{ steps.config.outputs.max_results }}
+           MEDIA_ONLY: ${{ steps.config.outputs.m edia_only }}
+          START_DATE: ${{ steps. config.outputs.start_date }}
+          END_DA TE: ${{ steps.config.outputs.end_date }}
+           FILTER_REPLIES: ${{ steps.config.output s.filter_replies }}
+        run: node scraper .js
+ 
